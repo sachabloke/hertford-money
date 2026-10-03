@@ -41,9 +41,10 @@ yarn-error.log*
 next-env.d.ts
 
 # downloaded/archived council files (reproducible via the pipeline)
-/data/archive/
-/data/raw/
-!/data/**/.gitkeep
+/data/archive/*
+/data/raw/*
+!/data/archive/.gitkeep
+!/data/raw/.gitkeep
 
 # keep the example env file
 !.env.example
