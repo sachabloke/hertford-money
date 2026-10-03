@@ -76,15 +76,18 @@ export function parsePaymentListPdf(
       if (header && raw.length === header.count && parseUkDate(raw[header.date]) && parseAmount(raw[header.amount]) !== null) {
         candidates++;
         const refCell = header.ref !== undefined ? raw[header.ref] || undefined : undefined;
-        if (header.supplier >= 0) {
-          let supplier = raw[header.supplier].replace(/\s+/g, " ").trim();
+        const supplierCell = header.supplier >= 0 ? raw[header.supplier].replace(/\s+/g, " ").trim() : "";
+        // Some years the "Supplier" column holds a Sage account code (AUD01) and the name sits in Details.
+        const codeOnly = /^[A-Z]{2,4}\d{2}$/.test(supplierCell) && header.details !== undefined;
+        if (header.supplier >= 0 && !codeOnly) {
+          let supplier = supplierCell;
           const dbl = supplier.match(/^(.{4,}?) \1$/); if (dbl) supplier = dbl[1]; // name printed twice (PDF artefact)
           let descParts = [header.details !== undefined ? raw[header.details] : "", header.desc !== undefined ? raw[header.desc] : ""].filter(Boolean);
           // Details often repeat the name ("ACME LTD - #PL12# Works"); keep the part that adds information.
           descParts = descParts.map((d) => (d.toUpperCase().startsWith(supplier.toUpperCase()) ? d.slice(supplier.length).replace(/^\s*-\s*/, "").trim() : d)).filter(Boolean);
           const inv = descParts.join(" ").match(/#(PL\d+)#/i);
           const description = descParts.join(" — ").replace(/\s*#PL\d+#\s*/i, " ").replace(/\s+/g, " ").trim() || undefined;
-          const method = refCell?.match(/^\(?\s*(DIRECT DEBIT|STANDING ORDER|BACS|CHQ|CHEQUE|CARD|DD|SO|TFR|TRANSFER|CASH)\s*\)?$/i);
+          const method = refCell?.match(/^\(?\s*(DIRECT DEBIT|STANDING ORDER|BACS|BAC|CHQ|CHEQUE|CARD|DD|SO|TFR|TRANSFER|CASH)\s*\)?$/i);
           if (!supplier) { rejected.push({ rowNumber: i + 1, reason: "no supplier", raw: line }); return; }
           rows.push({ rowNumber: i + 1, date: parseUkDate(raw[header.date])!, supplierRaw: supplier, amount: parseAmount(raw[header.amount])!, description, reference: inv?.[1] ?? (method ? undefined : refCell), extra: method ? { "Payment method": method[1].toUpperCase() } : undefined });
         } else {
@@ -92,7 +95,8 @@ export function parsePaymentListPdf(
           const details = [refCell ?? "", raw[header.details ?? -1] ?? ""].join(" ").trim();
           if (!details) { rejected.push({ rowNumber: i + 1, reason: "no details", raw: line }); return; }
           const parts = opts.split ? opts.split(details) : { supplier: details };
-          rows.push({ rowNumber: i + 1, date: parseUkDate(raw[header.date])!, supplierRaw: parts.supplier, amount: parseAmount(raw[header.amount])!, description: parts.description, reference: parts.reference, extra: parts.extra });
+          const extra = { ...(parts.extra ?? {}), ...(codeOnly ? { "Supplier code": supplierCell } : {}) };
+          rows.push({ rowNumber: i + 1, date: parseUkDate(raw[header.date])!, supplierRaw: parts.supplier, amount: parseAmount(raw[header.amount])!, description: parts.description, reference: parts.reference, extra: Object.keys(extra).length ? extra : undefined });
         }
         return;
       }

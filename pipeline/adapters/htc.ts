@@ -48,7 +48,7 @@ export function splitHtcDetails(details: string): { supplier: string; descriptio
   // Payment method: "BACS", "(BACS)", "Bacs", "DIRECT DEBIT", "DD" … possibly preceded by a Sage supplier code ("EHD01").
   const code = s.match(/^([A-Z]{2,4}\d{2})\s+/);
   if (code) { extra["Supplier code"] = code[1]; s = s.slice(code[0].length); }
-  const method = s.match(/^\(?\s*(DIRECT DEBIT|STANDING ORDER|BACS|CHQ|CHEQUE|CARD|DD|SO|TFR|TRANSFER|CASH)\s*\)?\s*/i);
+  const method = s.match(/^\(?\s*(DIRECT DEBIT|STANDING ORDER|BACS|BAC|CHQ|CHEQUE|CARD|DD|SO|TFR|TRANSFER|CASH)\s*\)?\s*/i);
   if (method) { extra["Payment method"] = method[1].toUpperCase(); s = s.slice(method[0].length); }
   const inv = s.match(/#(PL\d+)#/i);
   const reference = inv?.[1];
