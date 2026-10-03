@@ -44,3 +44,6 @@ next-env.d.ts
 /data/archive/
 /data/raw/
 !/data/**/.gitkeep
+
+# keep the example env file
+!.env.example
