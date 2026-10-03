@@ -25,7 +25,7 @@ export async function getOverview(): Promise<Overview> {
   const [auths, agg, suppliers, datasets, contracts, decisions, flags, lastRun] = await Promise.all([
     prisma.authority.findMany({ orderBy: { tier: "asc" } }),
     prisma.transaction.aggregate({ where: PUBLIC, _sum: { amount: true }, _count: true, _min: { date: true }, _max: { date: true } }),
-    prisma.transaction.findMany({ where: { ...PUBLIC, supplierId: { not: null } }, distinct: ["supplierId"], select: { supplierId: true } }),
+    prisma.$queryRaw<Array<{ n: bigint }>>`SELECT COUNT(DISTINCT "supplierId") AS n FROM "SupplierAuthorityStat"`,
     prisma.sourceDataset.count({ where: { isFixture: false } }),
     prisma.contract.count({ where: PUBLIC }),
     prisma.decision.count(),
@@ -36,7 +36,7 @@ export async function getOverview(): Promise<Overview> {
   const dsPerAuth = await prisma.sourceDataset.groupBy({ by: ["authorityId"], where: { isFixture: false }, _count: true });
   const order = { county: 0, unitary: 0, district: 1, parish: 2, other: 3 } as Record<string, number>;
   return {
-    total: Number(agg._sum.amount ?? 0), transactions: agg._count, suppliers: suppliers.length, minDate: agg._min.date, maxDate: agg._max.date,
+    total: Number(agg._sum.amount ?? 0), transactions: agg._count, suppliers: Number(suppliers[0]?.n ?? 0), minDate: agg._min.date, maxDate: agg._max.date,
     datasets, contracts, decisions, flags, lastImport: lastRun?.startedAt ?? null,
     authorities: auths.sort((a, b) => (order[a.tier] ?? 9) - (order[b.tier] ?? 9)).map((a) => {
       const p = perAuth.find((x) => x.authorityId === a.id);

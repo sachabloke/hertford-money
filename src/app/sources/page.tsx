@@ -58,7 +58,7 @@ export default async function SourcesPage() {
       <Section title="Supplier name matching" id="suppliers">
         <div className="card p-4 text-sm space-y-2">
           <p>Councils spell the same supplier many ways. Hertford Money groups spellings only when they differ trivially: letter case, punctuation, extra spaces, accents, and “Ltd” vs “Limited”, “PLC” vs “Public Limited Company”, “&amp;” vs “and”. “ACME LTD”, “Acme Limited” and “ACME LTD.” become one supplier. “ACME PLC”, “ACME HOLDINGS LTD” or plain “ACME” are kept separate because they may be different organisations. No fuzzy matching is used. Every original spelling is kept and shown on the supplier page with its confidence (“exact” or “normalised”).</p>
-          <p>Names the council has redacted (for example “REDACTED” or “Name withheld”) are shown as published and never linked to a person.</p>
+          <p>Names the council has redacted (for example “REDACTED” or “Name withheld”) are shown as published and never linked to a person. Payees that are not an organisation, such as numeric-only beneficiary IDs (used for individuals receiving direct payments) and payroll, PAYE or pension lines, keep their published text and count in every total, but are not ranked or flagged as suppliers.</p>
         </div>
       </Section>
 

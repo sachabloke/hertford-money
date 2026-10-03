@@ -164,8 +164,12 @@ export async function ask(questionRaw: string): Promise<AskResult> {
   if (term) {
     const r = base(q, "term-breakdown", s);
     const sup = await topSuppliers({ q: term, authorityId: scope.authorityId, limit: 3 });
-    const catRows = await prisma.transaction.groupBy({ by: ["category"], where: { dataset: { isFixture: false }, category: { contains: term, mode: "insensitive" }, ...(scope.authorityId ? { authorityId: scope.authorityId } : {}) }, _sum: { amount: true }, _count: true, orderBy: { _sum: { amount: "desc" } }, take: 3 });
-    const depRows = await prisma.transaction.groupBy({ by: ["department"], where: { dataset: { isFixture: false }, department: { contains: term, mode: "insensitive" }, ...(scope.authorityId ? { authorityId: scope.authorityId } : {}) }, _sum: { amount: true }, _count: true, orderBy: { _sum: { amount: "desc" } }, take: 3 });
+    // Category labels are the council's own ("Fees - Consultancy" for "consultants"), so match on a word stem too.
+    const stem = term.toLowerCase().replace(/(ants|ancy|ance|ing|ies|es|s)$/, "");
+    const catWhere = { OR: [{ category: { contains: term, mode: "insensitive" as const } }, ...(stem.length >= 5 ? [{ category: { contains: stem, mode: "insensitive" as const } }] : [])] };
+    const depWhere = { OR: [{ department: { contains: term, mode: "insensitive" as const } }, ...(stem.length >= 5 ? [{ department: { contains: stem, mode: "insensitive" as const } }] : [])] };
+    const catRows = await prisma.transaction.groupBy({ by: ["category"], where: { dataset: { isFixture: false }, ...catWhere, ...(scope.authorityId ? { authorityId: scope.authorityId } : {}) }, _sum: { amount: true }, _count: true, orderBy: { _sum: { amount: "desc" } }, take: 3 });
+    const depRows = await prisma.transaction.groupBy({ by: ["department"], where: { dataset: { isFixture: false }, ...depWhere, ...(scope.authorityId ? { authorityId: scope.authorityId } : {}) }, _sum: { amount: true }, _count: true, orderBy: { _sum: { amount: "desc" } }, take: 3 });
     const descAgg = await prisma.transaction.aggregate({ where: { dataset: { isFixture: false }, description: { contains: term, mode: "insensitive" }, ...(scope.authorityId ? { authorityId: scope.authorityId } : {}) }, _sum: { amount: true }, _count: true });
     const parts: string[] = [];
     if (sup.rows.length) {

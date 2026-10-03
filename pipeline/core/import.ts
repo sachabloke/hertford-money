@@ -10,7 +10,7 @@ import type { Adapter, DiscoveredFile, NormalisedContract, NormalisedTransaction
 import type { Archived } from "./fetch";
 import { validateTransactions, rowHash, type ValidationReport } from "./validate";
 import { financialYear, round2 } from "./parse";
-import { normaliseSupplierName, chooseDisplayName } from "./supplier";
+import { normaliseSupplierName, chooseDisplayName, isNonSupplierPayee } from "./supplier";
 import { createHash } from "node:crypto";
 
 export async function ensureAuthority(adapter: Adapter) {
@@ -39,6 +39,7 @@ export async function importTransactionsFile(adapter: Adapter, file: DiscoveredF
   if (existing && existing.sha256 === archived.sha256 && !opts.force) {
     const n = await prisma.transaction.count({ where: { datasetId: existing.id } });
     if (n > 0) {
+      await refreshDatasetMeta(existing.id, file);
       await log({ datasetId: existing.id, adapter: adapter.id, stage: "import", status: "skipped", message: `Unchanged (sha256 ${archived.sha256.slice(0, 12)}); ${n} rows already imported` });
       return { status: "skipped-unchanged", datasetId: existing.id, message: `unchanged, ${n} rows already in database` };
     }
@@ -101,7 +102,7 @@ export async function importContractsFile(adapter: Adapter, file: DiscoveredFile
   const existing = await prisma.sourceDataset.findFirst({ where: { authorityId, sourceUrl: file.url } });
   if (existing && existing.sha256 === archived.sha256 && !opts.force) {
     const n = await prisma.contract.count({ where: { datasetId: existing.id } });
-    if (n > 0) return { status: "skipped-unchanged", datasetId: existing.id, message: `unchanged, ${n} contracts already in database` };
+    if (n > 0) { await refreshDatasetMeta(existing.id, file); return { status: "skipped-unchanged", datasetId: existing.id, message: `unchanged, ${n} contracts already in database` }; }
   }
   const run = await prisma.importRun.create({ data: { adapter: adapter.id, stage: "import", status: "running", message: `${file.title} ← ${file.url}` } });
   try {
@@ -135,6 +136,11 @@ export async function importContractsFile(adapter: Adapter, file: DiscoveredFile
   }
 }
 
+/** Metadata (title, period, licence, page) can be corrected by a later discovery without re-importing rows. */
+async function refreshDatasetMeta(id: string, file: DiscoveredFile) {
+  await prisma.sourceDataset.update({ where: { id }, data: { title: file.title, sourcePageUrl: file.pageUrl, licence: file.licence, periodStart: file.periodStart ? new Date(file.periodStart) : null, periodEnd: file.periodEnd ? new Date(file.periodEnd) : null } });
+}
+
 function contractHash(c: NormalisedContract): string {
   return createHash("sha256").update([c.reference ?? "", c.title, c.supplierRaw, c.value ?? "", c.startDate?.toISOString() ?? "", c.endDate?.toISOString() ?? ""].join("|").toLowerCase()).digest("hex");
 }
@@ -148,7 +154,7 @@ export async function resolveSuppliers(tx: Tx, rawNames: string[]): Promise<Map<
   const result = new Map<string, string>();
   const byKey = new Map<string, Map<string, number>>();
   for (const [raw, n] of counts) {
-    if (raw === "REDACTED (as published)") continue; // never a supplier: redacted individuals are kept on the row only
+    if (raw === "REDACTED (as published)" || isNonSupplierPayee(raw)) continue; // never a supplier: kept on the row only
     const key = normaliseSupplierName(raw);
     if (!key) continue;
     if (!byKey.has(key)) byKey.set(key, new Map());

@@ -71,7 +71,9 @@ export function tableToTransactions(table: TableData, quirks: TransactionQuirks 
 export function tableToContracts(table: TableData, overrides: Record<string, string[]> = {}): ParseResult<NormalisedContract> {
   const spec: Record<string, string[]> = {};
   for (const [k, v] of Object.entries(CONTRACT_HEADER_CANDIDATES)) spec[k] = [...(overrides[k] ?? []), ...v];
-  const { map, missing } = mapHeaders(table.headers, spec, ["title", "supplier"]);
+  const { map, missing: missing0 } = mapHeaders(table.headers, spec, ["title", "supplier"]);
+  let missing = missing0;
+  if (missing.includes("title") && map.description) { map.title = map.description; delete map.description; missing = missing.filter((m) => m !== "title"); } // older registers have only a Description
   if (missing.length) {
     throw new FormatChangedError(`Required contract columns not found: ${missing.join(", ")}. Headers: [${table.headers.join(" | ")}]`, { headers: table.headers, map });
   }

@@ -12,19 +12,26 @@ export interface TableData {
 
 function decode(buffer: Buffer): string {
   // Councils export from Excel/SAP: UTF-8 (often with BOM), sometimes Windows-1252.
-  let text = buffer.toString("utf8");
-  if (text.includes("�")) text = new TextDecoder("windows-1252").decode(buffer);
-  return text.replace(/^﻿/, "");
+  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) buffer = buffer.subarray(3); // UTF-8 BOM
+  const utf8 = buffer.toString("utf8");
+  const bad = (utf8.match(/\uFFFD/g) ?? []).length;
+  // A handful of stray bytes in a multi-megabyte UTF-8 file is noise; a Windows-1252 file produces many.
+  const text = bad > 0 && bad > utf8.length / 20_000 ? new TextDecoder("windows-1252").decode(buffer) : utf8;
+  return text.replace(/^\uFEFF/, "");
 }
 
 export function readCsv(buffer: Buffer, opts: { delimiter?: string } = {}): TableData {
   const text = decode(buffer);
   const delimiter = opts.delimiter ?? guessDelimiter(text);
   let records: string[][];
-  try {
-    records = parse(text, { delimiter, relax_column_count: true, relax_quotes: true, skip_empty_lines: true, trim: true, bom: true });
-  } catch (e) {
-    throw new FormatChangedError(`CSV could not be parsed: ${(e as Error).message}`);
+  if (looksWholeRowQuoted(text)) {
+    records = parseWholeRowQuoted(text, delimiter);
+  } else {
+    try {
+      records = parse(text, { delimiter, relax_column_count: true, relax_quotes: true, skip_empty_lines: true, trim: true, bom: true });
+    } catch (e) {
+      throw new FormatChangedError(`CSV could not be parsed: ${(e as Error).message}`);
+    }
   }
   return fromGrid(records);
 }
@@ -44,6 +51,35 @@ export function readTable(buffer: Buffer, format: string): TableData {
   if (format === "csv") return readCsv(buffer);
   if (format === "xlsx" || format === "xls") return readXlsx(buffer);
   throw new FormatChangedError(`Unsupported table format: ${format}`);
+}
+
+/** Some exports wrap each whole row in one pair of quotes ("a,b,c", inner quotes doubled, cells may contain line breaks). */
+function looksWholeRowQuoted(text: string): boolean {
+  const first = text.split(/\r?\n/).filter((l) => l.trim()).slice(0, 5);
+  return first.length >= 3 && first.every((l) => l.startsWith('"') && !l.includes('","') && (l.match(/,/g) ?? []).length >= 2);
+}
+
+function parseWholeRowQuoted(text: string, delimiter: string): string[][] {
+  const out: string[][] = [];
+  let buf = "";
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    buf = buf ? `${buf}\n${line}` : line;
+    if (!buf.trim()) { buf = ""; continue; }
+    // A record ends where a line ends with a quote and the next non-empty line starts a new quoted record (or EOF).
+    const next = lines.slice(i + 1).find((l) => l.trim());
+    if (/"\s*$/.test(buf) && (next === undefined || next.startsWith('"'))) {
+      const inner = buf.trim().slice(1, -1).replace(/""/g, '"');
+      let row: string[];
+      try { row = (parse(inner, { delimiter, relax_column_count: true, relax_quotes: true, trim: true })[0] as string[] | undefined) ?? [inner]; }
+      catch { row = inner.split(delimiter).map((c) => c.trim()); }
+      out.push(row);
+      buf = "";
+    }
+  }
+  if (buf.trim()) out.push(buf.split(delimiter).map((c) => c.trim()));
+  return out;
 }
 
 function guessDelimiter(text: string): string {

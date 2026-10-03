@@ -115,3 +115,37 @@ describe("decision report section extraction", async () => {
     expect(s.outcome).toBeUndefined();
   });
 });
+
+describe("Hertford Town Council PDF helpers", async () => {
+  const { periodFromTitle, splitHtcDetails } = await import("../pipeline/adapters/htc");
+  const { parsePaymentListPdf } = await import("../pipeline/core/pdf");
+  it("reads periods from document titles", () => {
+    expect(periodFromTitle("Payments over £100 Apr - Jun 24")).toEqual({ start: "2024-04-01", end: "2024-06-30" });
+    expect(periodFromTitle("Payments Over £100 Jul 26")).toEqual({ start: "2026-07-01", end: "2026-07-31" });
+    expect(periodFromTitle("Payments over £100 June 26")).toEqual({ start: "2026-06-01", end: "2026-06-30" });
+  });
+  it("splits Sage details into supplier, description, reference and method", () => {
+    expect(splitHtcDetails("1200 BACSGASCOYNE CECIL ESTATES - Castle Quarterly Rent")).toEqual({ supplier: "GASCOYNE CECIL ESTATES", description: "Castle Quarterly Rent", reference: undefined, extra: { "N/C": "1200", "Payment method": "BACS" } });
+    expect(splitHtcDetails("BACSACORN SAFETY SERVICES - #PL2165# 15x Legionella samples")).toMatchObject({ supplier: "ACORN SAFETY SERVICES", description: "15x Legionella samples", reference: "PL2165" });
+    expect(splitHtcDetails("BACSJuly 2026 - Payroll").supplier).toBe("July 2026 - Payroll");
+    expect(splitHtcDetails("1200 BACSNet Pay - 1 - 24/25 -").supplier).toBe("Net Pay - 1 - 24/25 -");
+  });
+  it("parses tab-separated column text and refuses to guess where description meets amount", () => {
+    const text = "Date\tRef\tDetails\tNet Amount\n01/07/2026BACS\tBRITISH GAS - #PL2155# 16 May 2026 to 15 June 2026\t493.77\n14/07/2026BACS\tGASCOYNE CECIL ESTATES - #PL2112# Rent in Advance\t19,182.00\n";
+    const r = parsePaymentListPdf(text, { split: splitHtcDetails });
+    expect(r.rows.map((x) => x.amount)).toEqual([493.77, 19182]);
+    expect(r.rows[0].supplierRaw).toBe("BRITISH GAS");
+  });
+});
+
+describe("non-supplier payees", async () => {
+  const { isNonSupplierPayee } = await import("../pipeline/core/supplier");
+  it("excludes numeric IDs and payroll lines from supplier ranking", () => {
+    expect(isNonSupplierPayee("708967")).toBe(true);
+    expect(isNonSupplierPayee("July 2026 - Payroll")).toBe(true);
+    expect(isNonSupplierPayee("Net Pay - 1 - 24/25 -")).toBe(true);
+    expect(isNonSupplierPayee("PAYE 1 - 24/25 -")).toBe(true);
+    expect(isNonSupplierPayee("HMRC")).toBe(false);
+    expect(isNonSupplierPayee("ACME LTD")).toBe(false);
+  });
+});

@@ -32,13 +32,15 @@ export function monthFromText(text: string): { start: string; end: string; label
 /** "April - June 2026" / "Apr-Jun 2026" / "Q1 2026/27" → quarter range. */
 export function quarterFromText(text: string): { start: string; end: string; label: string } | null {
   const s = text.toLowerCase();
-  const m = s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:-|–|to)\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(20\d{2})\b/);
+  const m = s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(20\d{2})?\s*(?:-|–|to)\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(20\d{2})\b/);
   if (!m) return null;
-  const a = MONTHS.findIndex((x) => x.startsWith(m[1])), b = MONTHS.findIndex((x) => x.startsWith(m[2]));
-  const year = +m[3];
-  const startYear = a > b ? year - 1 : year; // "Oct - Dec 2026" (same year) vs "Jan-Mar 2026"
+  const a = MONTHS.findIndex((x) => x.startsWith(m[1])), b = MONTHS.findIndex((x) => x.startsWith(m[3]));
+  const year = +m[4];
+  const startYear = m[2] ? +m[2] : a > b ? year - 1 : year; // "Oct - Dec 2026" (same year) vs "Jan-Mar 2026"
   const start = new Date(Date.UTC(startYear, a, 1)), end = new Date(Date.UTC(year, b + 1, 0));
-  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10), label: text.trim() };
+  const cap = (i: number) => MONTHS[i][0].toUpperCase() + MONTHS[i].slice(1);
+  const label = startYear === year ? `${cap(a)} – ${cap(b)} ${year}` : `${cap(a)} ${startYear} – ${cap(b)} ${year}`;
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10), label };
 }
 
 export function formatFromUrl(url: string): "csv" | "xlsx" | "xls" | "pdf" | "html" | "json" | null {

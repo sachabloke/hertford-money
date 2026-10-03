@@ -47,7 +47,7 @@ export const ehdc: Adapter = {
         const fmt = formatFromUrl(l.href);
         if (!fmt || fmt === "html") continue;
         if (!/spending\s*report|w\/c|week\s*commencing/i.test(l.text)) continue;
-        const dm = l.text.match(/(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+\s+\d{4}|\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/);
+        const dm = l.text.match(/(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+\s+(?:20\d{2}|\d{2})|\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})\b/);
         const start = dm ? parseUkDate(dm[1].replace(/(\d)(st|nd|rd|th)/, "$1")) : null;
         const end = start ? new Date(start.getTime() + 6 * 86400_000) : null;
         out.push({ kind: "transactions", title: `Council spending report — ${l.text.replace(/^council spending report\s*/i, "")}`.trim(), url: l.href, pageUrl: page, format: fmt, licence: LICENCE, periodStart: start ? isoDate(start) : undefined, periodEnd: end ? isoDate(end) : undefined });

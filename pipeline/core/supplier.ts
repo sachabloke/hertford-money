@@ -43,6 +43,16 @@ export function isRedactedName(raw: string): boolean {
   );
 }
 
+/**
+ * Payee strings that are not an organisation and must not be ranked or flagged as a "supplier":
+ * numeric-only IDs (councils publish these for individuals, e.g. direct payments) and payroll / PAYE /
+ * pension lines that small councils list by month. The rows keep their published text and count in totals.
+ */
+export function isNonSupplierPayee(raw: string): boolean {
+  const s = raw.trim();
+  return /^\d+$/.test(s) || /\bpayroll\b|^net pay\b|^paye\b|employee\/employer pension/i.test(s);
+}
+
 /** Pick the display spelling: the most frequent raw spelling, ties broken by the shortest. */
 export function chooseDisplayName(counts: Map<string, number>): string {
   let best = "";

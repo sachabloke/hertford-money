@@ -11,10 +11,12 @@ First authorities: **Hertfordshire County Council** (county), **East Herts Distr
 ## Current state (read this first)
 
 * The application, database schema, data pipeline, three authority adapters, anomaly rules, search, supplier pages, contract and decision pages, and the "Ask" engine are built and tested.
-* **The real council files have not yet been downloaded** in the environment where this was built: its outbound network only allows GitHub, npm and PyPI, and every request to `hertfordshire.gov.uk`, `eastherts.gov.uk`, `hertford.gov.uk` and `data.gov.uk` was refused by the proxy (HTTP 403 at the CONNECT step). The pipeline records that failure in its import log rather than fabricating anything. The public database is therefore empty and every page shows an honest "no data imported yet" state.
-* Running `npm run pipeline -- all` on a machine that can reach the council websites performs the real import. See **Importing real data** below, including what to do if a council's column names differ from the ones the adapters expect (the import fails visibly and tells you the headers it found).
-
----
+* **Real data is loaded for two of the three councils** (as of 3 October 2026):
+  * **Hertfordshire County Council**: every supplier-payments file the council publishes (April 2022 → August 2026, monthly from 2025, quarterly before), about 963,000 payment rows, plus 39 of 41 quarterly contract-register files (2016 → 2026). Every imported file passed validation with zero rejected rows, and the database total for each file equals the file total.
+  * **Hertford Town Council**: payment lists January 2019 → August 2026 (about 3,300 rows). Three 2019–2020 files are dead links on the council's own site, and the 2017–2018 PDFs use a layout that cannot be read reliably from their text layer, so they are refused rather than guessed (recorded in the import log).
+  * **East Herts District Council**: not yet. Its weekly spending reports (XLSX) and contract register (PDF) are served from `cdn-eastherts.onwebcurl.com`, which the build environment's network policy blocks. The adapter has found all 120 report links; allow that host (or run the import from a machine that can reach it) and `npm run pipeline -- import ehdc` does the rest.
+* Decisions: the county's committee site (`democracy.hertfordshire.gov.uk`) returns HTTP 403 to non-browser clients and the district's was not reachable from the build environment, so no decisions are imported yet. The importer is in place (`pipeline decisions <adapter>`).
+* Two 2016 county contract files (April–September 2016) use a whole-row-quoted CSV layout with line breaks inside cells that still defeats the parser; they are skipped and logged.
 
 ## Architecture
 
@@ -174,9 +176,10 @@ hertford-money/
 
 ## Current limitations
 
-* No real data has been imported yet in the build environment (network policy); see **Current state**.
-* Column names in the councils' current files could not be inspected from the build environment. The adapters use a broad, documented list of candidate header names and fail visibly if none match.
-* East Herts weekly reports and Hertford Town Council lists may be PDF; the PDF parser handles text-layer "date … amount" lists and refuses scanned PDFs.
+* East Herts data is not loaded yet (blocked host; see **Current state**).
+* The county's two directorate/cost-centre columns are swapped between publications; the adapter decides per file from the data (see `fixSwappedDepartmentColumns`). Category labels change over time (e.g. "Services Commissioned" dominates recent years).
+* Hertford Town Council 2017–2018 lists and three dead-link files are missing; its payroll/PAYE/pension lines and the county's numeric beneficiary IDs are kept in totals but not ranked as suppliers.
+* The county publishes payments "over £250" for 2022–2024 files and "over £500" from 2025 (file names say which); totals across those years are not like-for-like at the low end.
 * Hertford Town Council has no ModernGov system; its minutes/agendas are PDFs on its website and are not yet imported as decisions.
 * Budget and performance tables (`BudgetLine`, `PerformanceMeasure`) have schema, flag rules and UI hooks but no importer yet: council budget books are PDFs with varying tables and need a per-document extractor.
 * Payments cannot be reconciled to specific contracts from published data; the contract page shows payments to the supplier in the contract period with that caveat.
@@ -184,7 +187,7 @@ hertford-money/
 
 ## Next development priorities
 
-1. Run the real imports (all three councils, all available months/years) on a machine with web access; inspect validation reports; adjust header mappings if any file is refused.
+1. Allow `cdn-eastherts.onwebcurl.com` (or run from a machine that can reach it) and import East Herts: `npm run pipeline -- import ehdc` then `stats` and `flags`.
 2. Compare each financial year's total with the councils' published outturn/accounts figures and record the comparison on the Sources page.
 3. Budget importer for the HCC Integrated Plan and EHDC budget/outturn reports (budget vs actual flags are already wired).
 4. Decisions: run the ModernGov importer for HCC and EHDC; add a PDF-minutes importer for Hertford Town Council.

@@ -34,7 +34,7 @@ program.command("discover <adapter>").option("--json").description("List files c
     const files = await adapter.discover();
     if (o.json) console.log(JSON.stringify(files, null, 2));
     else for (const f of files) console.log(`${f.kind.padEnd(12)} ${f.format.padEnd(4)} ${(f.periodStart ?? "").padEnd(10)} ${f.title}\n             ${f.url}`);
-    console.log(`\n${files.length} files`);
+    if (!o.json) console.log(`\n${files.length} files`);
   } catch (e) { explainNetwork(e as Error); process.exitCode = 1; }
   await prisma.$disconnect();
 });
