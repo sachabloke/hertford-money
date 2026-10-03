@@ -41,18 +41,26 @@ export function periodFromTitle(title: string): { start?: string; end?: string }
 
 /** Split Sage "Details": "[1200 ]BACS|DIRECT DEBIT|… SUPPLIER - description". */
 export function splitHtcDetails(details: string): { supplier: string; description?: string; reference?: string; extra?: Record<string, string> } {
-  let s = details.trim();
+  let s = details.replace(/\s+/g, " ").trim();
   const extra: Record<string, string> = {};
   const nc = s.match(/^(\d{4})\s+/);
   if (nc) { extra["N/C"] = nc[1]; s = s.slice(nc[0].length); }
-  const method = s.match(/^(DIRECT DEBIT|STANDING ORDER|BACS|CHQ|CHEQUE|CARD|DD|SO|TFR|TRANSFER|CASH)\s*/i);
+  // Payment method: "BACS", "(BACS)", "Bacs", "DIRECT DEBIT", "DD" … possibly preceded by a Sage supplier code ("EHD01").
+  const code = s.match(/^([A-Z]{2,4}\d{2})\s+/);
+  if (code) { extra["Supplier code"] = code[1]; s = s.slice(code[0].length); }
+  const method = s.match(/^\(?\s*(DIRECT DEBIT|STANDING ORDER|BACS|CHQ|CHEQUE|CARD|DD|SO|TFR|TRANSFER|CASH)\s*\)?\s*/i);
   if (method) { extra["Payment method"] = method[1].toUpperCase(); s = s.slice(method[0].length); }
   const inv = s.match(/#(PL\d+)#/i);
   const reference = inv?.[1];
   s = s.replace(/\s*#PL\d+#\s*/i, " ").replace(/\s+/g, " ").trim();
-  const dash = s.indexOf(" - ");
+  let dash = s.indexOf(" - ");
+  // 2021-era lists join supplier and purpose with a bare hyphen: "HY Solicitors-Renewal of …".
+  if (dash < 0) { const m = s.match(/^([^-]{3,}?)-(?=[A-Z])/); if (m) dash = m[1].length; }
   let supplier = dash > 0 ? s.slice(0, dash).trim() : s;
-  let description = dash > 0 ? s.slice(dash + 3).trim() : undefined;
+  let description = dash > 0 ? s.slice(dash).replace(/^\s*-\s*/, "").trim() : undefined;
+  // A name printed twice ("ACME LTD ACME LTD") is a PDF artefact, not two suppliers.
+  const dbl = supplier.match(/^(.{4,}?) \1$/);
+  if (dbl) supplier = dbl[1];
   // Payroll / HMRC / pension lines are published as "July 2026 - Payroll", "Net Pay - 1 - 24/25", "PAYE 1 - 24/25":
   // the part before the dash is not a supplier, so keep the published text whole.
   if (/^(net pay|paye|employee\/employer pension|[a-z]+ 20\d{2}|business card htc)$/i.test(supplier) || /payroll|net pay|paye\b|pension/i.test(s) && !/\bltd\b|limited|plc/i.test(supplier)) {

@@ -77,10 +77,16 @@ export function parsePaymentListPdf(
         candidates++;
         const refCell = header.ref !== undefined ? raw[header.ref] || undefined : undefined;
         if (header.supplier >= 0) {
-          const supplier = raw[header.supplier];
-          const descParts = [header.details !== undefined ? raw[header.details] : "", header.desc !== undefined ? raw[header.desc] : ""].filter(Boolean);
+          let supplier = raw[header.supplier].replace(/\s+/g, " ").trim();
+          const dbl = supplier.match(/^(.{4,}?) \1$/); if (dbl) supplier = dbl[1]; // name printed twice (PDF artefact)
+          let descParts = [header.details !== undefined ? raw[header.details] : "", header.desc !== undefined ? raw[header.desc] : ""].filter(Boolean);
+          // Details often repeat the name ("ACME LTD - #PL12# Works"); keep the part that adds information.
+          descParts = descParts.map((d) => (d.toUpperCase().startsWith(supplier.toUpperCase()) ? d.slice(supplier.length).replace(/^\s*-\s*/, "").trim() : d)).filter(Boolean);
+          const inv = descParts.join(" ").match(/#(PL\d+)#/i);
+          const description = descParts.join(" — ").replace(/\s*#PL\d+#\s*/i, " ").replace(/\s+/g, " ").trim() || undefined;
+          const method = refCell?.match(/^\(?\s*(DIRECT DEBIT|STANDING ORDER|BACS|CHQ|CHEQUE|CARD|DD|SO|TFR|TRANSFER|CASH)\s*\)?$/i);
           if (!supplier) { rejected.push({ rowNumber: i + 1, reason: "no supplier", raw: line }); return; }
-          rows.push({ rowNumber: i + 1, date: parseUkDate(raw[header.date])!, supplierRaw: supplier, amount: parseAmount(raw[header.amount])!, description: descParts.join(" — ") || undefined, reference: refCell });
+          rows.push({ rowNumber: i + 1, date: parseUkDate(raw[header.date])!, supplierRaw: supplier, amount: parseAmount(raw[header.amount])!, description, reference: inv?.[1] ?? (method ? undefined : refCell), extra: method ? { "Payment method": method[1].toUpperCase() } : undefined });
         } else {
           // Only a combined "Details" column: let the adapter's splitter separate payee from purpose.
           const details = [refCell ?? "", raw[header.details ?? -1] ?? ""].join(" ").trim();

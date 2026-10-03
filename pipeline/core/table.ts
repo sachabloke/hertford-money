@@ -14,7 +14,9 @@ function decode(buffer: Buffer): string {
   // Councils export from Excel/SAP: UTF-8 (often with BOM), sometimes Windows-1252.
   if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) buffer = buffer.subarray(3); // UTF-8 BOM
   const utf8 = buffer.toString("utf8");
-  const bad = (utf8.match(/\uFFFD/g) ?? []).length;
+  // U+FFFD characters that are literally in the file (bytes EF BF BD) are the council's own; only count decoding failures.
+  const literal = buffer.toString("latin1").match(/\xef\xbf\xbd/g)?.length ?? 0;
+  const bad = (utf8.match(/\uFFFD/g) ?? []).length - literal;
   // A handful of stray bytes in a multi-megabyte UTF-8 file is noise; a Windows-1252 file produces many.
   const text = bad > 0 && bad > utf8.length / 20_000 ? new TextDecoder("windows-1252").decode(buffer) : utf8;
   return text.replace(/^\uFEFF/, "");

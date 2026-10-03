@@ -128,6 +128,9 @@ describe("Hertford Town Council PDF helpers", async () => {
     expect(splitHtcDetails("1200 BACSGASCOYNE CECIL ESTATES - Castle Quarterly Rent")).toEqual({ supplier: "GASCOYNE CECIL ESTATES", description: "Castle Quarterly Rent", reference: undefined, extra: { "N/C": "1200", "Payment method": "BACS" } });
     expect(splitHtcDetails("BACSACORN SAFETY SERVICES - #PL2165# 15x Legionella samples")).toMatchObject({ supplier: "ACORN SAFETY SERVICES", description: "15x Legionella samples", reference: "PL2165" });
     expect(splitHtcDetails("BACSJuly 2026 - Payroll").supplier).toBe("July 2026 - Payroll");
+    expect(splitHtcDetails("(BACS) HERTFORD MUSEUM - Quarterly Grant")).toMatchObject({ supplier: "HERTFORD MUSEUM", description: "Quarterly Grant", extra: { "Payment method": "BACS" } });
+    expect(splitHtcDetails("EHD01 (BACS) East Herts-Castle ground maintenance")).toMatchObject({ supplier: "East Herts", description: "Castle ground maintenance" });
+    expect(splitHtcDetails("BACSEAST HERTS DISTRICT COUNCIL EAST HERTS DISTRICT COUNCIL - rates").supplier).toBe("EAST HERTS DISTRICT COUNCIL");
     expect(splitHtcDetails("1200 BACSNet Pay - 1 - 24/25 -").supplier).toBe("Net Pay - 1 - 24/25 -");
   });
   it("parses tab-separated column text and refuses to guess where description meets amount", () => {
