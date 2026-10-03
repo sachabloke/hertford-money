@@ -71,7 +71,8 @@ export function validateTransactions(
   const maxRejectRate = opts.maxRejectRate ?? 0.02;
 
   if (rowsParsed === 0) throw new Error("Validation failed: no rows could be parsed from the file.");
-  if (rejectRate > maxRejectRate) {
+  // A single unreadable line in a small file is recorded (rejectedSample) but does not block the file.
+  if (rejectRate > maxRejectRate && rowsRejected > 1) {
     throw new Error(
       `Validation failed: ${rowsRejected} of ${rowsParsed + rowsRejected} rows rejected (${(rejectRate * 100).toFixed(1)}% > ${(maxRejectRate * 100).toFixed(1)}%). ` +
       `First reasons: ${parsed.rejected.slice(0, 3).map((r) => `row ${r.rowNumber}: ${r.reason}`).join("; ")}`,

@@ -97,9 +97,11 @@ describe("fixture CSV → transactions → validation", () => {
     expect(report.negativeRows).toBe(1);
     expect(report.distinctSuppliers).toBe(4); // two Acme spellings count separately here; merged later by normalisation
   });
-  it("fails validation when too many rows are rejected", () => {
+  it("fails validation when too many rows are rejected, but tolerates a single bad line", () => {
     const parsed = tableToTransactions(readCsv(buf));
-    expect(() => validateTransactions(parsed, { maxRejectRate: 0.01 })).toThrow(/Validation failed/);
+    expect(() => validateTransactions(parsed, { maxRejectRate: 0.01 })).not.toThrow(); // one rejected row is logged, not fatal
+    const two = { ...parsed, rejected: [...parsed.rejected, ...parsed.rejected] };
+    expect(() => validateTransactions(two, { maxRejectRate: 0.01 })).toThrow(/Validation failed/);
   });
 });
 
