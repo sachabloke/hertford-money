@@ -1,0 +1,293 @@
+// Hertford Money — normalised schema for UK local-authority financial transparency data.
+// Design rule: every financial record carries its source dataset, source URL and publication date.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// A public body whose data we index (county, district, town/parish council ...).
+model Authority {
+  id               String  @id // e.g. "hcc", "ehdc", "htc"
+  name             String
+  shortName        String
+  tier             String // county | district | parish | unitary | ...
+  area             String // e.g. "Hertfordshire"
+  website          String
+  onsCode          String? // GSS code where known
+  population       Int? // used only for per-head comparisons; source noted in populationSource
+  populationSource String?
+  notes            String?
+
+  datasets     SourceDataset[]
+  transactions Transaction[]
+  contracts    Contract[]
+  budgetLines  BudgetLine[]
+  decisions    Decision[]
+  documents    Document[]
+  measures     PerformanceMeasure[]
+  flags        AnomalyFlag[]
+  suppliers    SupplierAuthorityStat[]
+}
+
+/// One published file (a monthly CSV, a quarterly contracts CSV, a PDF ...) exactly as retrieved.
+model SourceDataset {
+  id            String    @id @default(cuid())
+  authorityId   String
+  authority     Authority @relation(fields: [authorityId], references: [id])
+  adapter       String // adapter id that produced this dataset
+  kind          String // transactions | contracts | budget | decisions | documents | performance
+  title         String
+  sourceUrl     String // original download URL
+  sourcePageUrl String? // page the link was found on
+  licence       String? // e.g. "Open Government Licence v3.0"
+  publishedAt   DateTime? // publication date stated by the council, if known
+  periodStart   DateTime?
+  periodEnd     DateTime?
+  retrievedAt   DateTime
+  archivePath   String // where the untouched original is stored under data/archive
+  sha256        String
+  bytes         Int
+  format        String // csv | xlsx | pdf | html | json
+  isFixture     Boolean   @default(false) // true ONLY for test fixtures; never shown in the public app
+
+  importRuns   ImportRun[]
+  transactions Transaction[]
+  contracts    Contract[]
+  budgetLines  BudgetLine[]
+  documents    Document[]
+  measures     PerformanceMeasure[]
+
+  @@unique([authorityId, sourceUrl, sha256])
+  @@index([authorityId, kind])
+}
+
+/// Audit log for every pipeline run (rerunnable; failures recorded, never silent).
+model ImportRun {
+  id           String         @id @default(cuid())
+  datasetId    String?
+  dataset      SourceDataset? @relation(fields: [datasetId], references: [id])
+  adapter      String
+  stage        String // download | validate | import | verify | publish | flags
+  status       String // running | success | failed | skipped
+  startedAt    DateTime       @default(now())
+  finishedAt   DateTime?
+  rowsRead     Int?
+  rowsImported Int?
+  rowsRejected Int?
+  totalAmount  Decimal?       @db.Decimal(18, 2)
+  checks       Json? // validation report
+  message      String?
+  error        String?
+
+  @@index([adapter, startedAt])
+}
+
+/// A single payment / transaction line as published by the authority.
+model Transaction {
+  id            String        @id @default(cuid())
+  authorityId   String
+  authority     Authority     @relation(fields: [authorityId], references: [id])
+  datasetId     String
+  dataset       SourceDataset @relation(fields: [datasetId], references: [id])
+  rowNumber     Int // row in the source file (evidence pointer)
+  date          DateTime      @db.Date
+  financialYear String // "2025/26"
+  supplierRaw   String // exactly as published
+  supplierId    String?
+  supplier      Supplier?     @relation(fields: [supplierId], references: [id])
+  amount        Decimal       @db.Decimal(18, 2)
+  amountIsNet   Boolean? // true if the source states net of VAT; null if unknown
+  department    String? // directorate / department / cost centre description
+  serviceArea   String?
+  category      String? // expense type / expenditure category
+  description   String?
+  reference     String? // transaction / invoice / payment reference
+  extra         Json? // any other published columns, preserved verbatim
+  rowHash       String // sha256 of normalised row; used for dedupe and duplicate-looking flags
+
+  @@unique([datasetId, rowHash, rowNumber])
+  @@index([authorityId, date])
+  @@index([supplierId, date])
+  @@index([financialYear])
+  @@index([category])
+}
+
+/// Canonical supplier (one per conservatively normalised name).
+model Supplier {
+  id            String  @id @default(cuid())
+  normalisedKey String  @unique // deterministic key from normaliseSupplierName()
+  displayName   String // most common raw spelling
+  companyNumber String? // only when published by the source
+  notes         String?
+
+  aliases      SupplierAlias[]
+  transactions Transaction[]
+  contracts    Contract[]
+  flags        AnomalyFlag[]
+  stats        SupplierAuthorityStat[]
+
+  @@index([displayName])
+}
+
+/// Every raw spelling seen, linked to a canonical supplier with an explicit confidence.
+model SupplierAlias {
+  id          String   @id @default(cuid())
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  rawName     String
+  confidence  String // exact | normalised | manual
+  occurrences Int      @default(0)
+
+  @@unique([rawName])
+  @@index([supplierId])
+}
+
+/// Materialised per-authority per-supplier totals (rebuilt by `pipeline stats`).
+model SupplierAuthorityStat {
+  supplierId    String
+  supplier      Supplier  @relation(fields: [supplierId], references: [id])
+  authorityId   String
+  authority     Authority @relation(fields: [authorityId], references: [id])
+  financialYear String
+  total         Decimal   @db.Decimal(18, 2)
+  count         Int
+
+  @@id([supplierId, authorityId, financialYear])
+  @@index([authorityId, financialYear, total])
+}
+
+model Contract {
+  id               String        @id @default(cuid())
+  authorityId      String
+  authority        Authority     @relation(fields: [authorityId], references: [id])
+  datasetId        String
+  dataset          SourceDataset @relation(fields: [datasetId], references: [id])
+  rowNumber        Int
+  reference        String?
+  title            String
+  description      String?
+  supplierRaw      String
+  supplierId       String?
+  supplier         Supplier?     @relation(fields: [supplierId], references: [id])
+  value            Decimal?      @db.Decimal(18, 2)
+  valueBasis       String? // "total contract value" | "annual" | as stated
+  awardDate        DateTime?     @db.Date
+  startDate        DateTime?     @db.Date
+  endDate          DateTime?     @db.Date
+  reviewDate       DateTime?     @db.Date
+  department       String?
+  category         String?
+  procurementRoute String?
+  sourceRecordUrl  String?
+  extra            Json?
+  rowHash          String
+
+  @@unique([datasetId, rowHash, rowNumber])
+  @@index([authorityId])
+  @@index([supplierId])
+}
+
+/// Budget line as published (budget vs actual where both are available).
+model BudgetLine {
+  id            String        @id @default(cuid())
+  authorityId   String
+  authority     Authority     @relation(fields: [authorityId], references: [id])
+  datasetId     String
+  dataset       SourceDataset @relation(fields: [datasetId], references: [id])
+  financialYear String
+  service       String
+  measure       String // "gross expenditure" | "net expenditure" | "income" ...
+  budget        Decimal?      @db.Decimal(18, 2)
+  actual        Decimal?      @db.Decimal(18, 2)
+  unit          String        @default("GBP")
+  note          String?
+  pageRef       String? // page/table in the source document
+
+  @@index([authorityId, financialYear])
+}
+
+/// A council decision (cabinet/committee/officer) with the council's own stated reasons.
+model Decision {
+  id                    String     @id @default(cuid())
+  authorityId           String
+  authority             Authority  @relation(fields: [authorityId], references: [id])
+  externalId            String? // ModernGov decision id etc.
+  title                 String
+  body                  String? // decision-making body, e.g. "Cabinet"
+  decisionDate          DateTime?  @db.Date
+  status                String?
+  proposal              String? // plain-English, grounded in the document text
+  councilReason         String? // explicitly the council's stated reason
+  alternatives          String?
+  financialImplications String?
+  outcome               String?
+  summaryKind           String? // "extracted" | "ai-summary" — always labelled
+  sourceUrl             String
+  documents             Document[]
+
+  @@unique([authorityId, sourceUrl])
+  @@index([authorityId, decisionDate])
+}
+
+/// Any council paper: agenda, minutes, report, accounts, budget book, contract record ...
+model Document {
+  id          String         @id @default(cuid())
+  authorityId String
+  authority   Authority      @relation(fields: [authorityId], references: [id])
+  datasetId   String?
+  dataset     SourceDataset? @relation(fields: [datasetId], references: [id])
+  decisionId  String?
+  decision    Decision?      @relation(fields: [decisionId], references: [id])
+  title       String
+  kind        String // agenda | minutes | report | accounts | budget | contract | other
+  sourceUrl   String
+  publishedAt DateTime?
+  meetingDate DateTime?      @db.Date
+  bodyName    String?
+  textExcerpt String? // first N chars of extracted text, for search
+  fullText    String?
+
+  @@unique([authorityId, sourceUrl])
+  @@index([authorityId, kind])
+}
+
+model PerformanceMeasure {
+  id            String        @id @default(cuid())
+  authorityId   String
+  authority     Authority     @relation(fields: [authorityId], references: [id])
+  datasetId     String
+  dataset       SourceDataset @relation(fields: [datasetId], references: [id])
+  service       String
+  measure       String
+  financialYear String
+  value         Decimal       @db.Decimal(18, 4)
+  unit          String
+  sourceUrl     String
+  note          String?
+
+  @@index([authorityId, service, financialYear])
+}
+
+/// A quantitative anomaly flag. Stored with the exact numbers and the rule that fired.
+model AnomalyFlag {
+  id          String    @id @default(cuid())
+  authorityId String
+  authority   Authority @relation(fields: [authorityId], references: [id])
+  supplierId  String?
+  supplier    Supplier? @relation(fields: [supplierId], references: [id])
+  rule        String // e.g. "supplier_rapid_increase"
+  severity    String // info | notable | high  (statistical, NOT a judgement)
+  title       String
+  reason      String // exact plain-English reason it triggered
+  evidence    Json // numbers used, thresholds, record ids
+  computedAt  DateTime  @default(now())
+  periodLabel String?
+
+  @@index([authorityId, rule])
+  @@index([supplierId])
+}

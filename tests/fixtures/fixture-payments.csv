@@ -1,0 +1,10 @@
+Hertford Money TEST FIXTURE - not real data
+Department,Service Area,Expense Type,Payment Date,Transaction Number,Supplier Name,Amount (£),Purpose
+Adult Care Services,Older People,Residential Care,03/04/2025,TX1001,ACME CARE LTD,"1,250.00",Placement
+Adult Care Services,Older People,Residential Care,03/04/2025,TX1001,ACME CARE LTD,"1,250.00",Placement
+Adult Care Services,Older People,Residential Care,10/04/2025,TX1002,Acme Care Limited,"2,000.50",Placement
+Environment,Highways,Road Maintenance,15/04/2025,TX1003,ROADWORKS PLC,"15,000.00",Resurfacing
+Environment,Highways,Road Maintenance,20/05/2025,TX1004,ROADWORKS PLC,(500.00),Credit note
+Resources,ICT,Software,01/06/2025,TX1005,REDACTED,"600.00",Licence
+Resources,ICT,Software,31/02/2025,TX1006,BAD DATE CO,"600.00",Bad row
+Total,,,,,,"20,200.50",
